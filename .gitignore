@@ -105,7 +105,9 @@ venv.bak/
 .mypy_cache/
 
 # custom
-/data
+#/data
+*.jpg
+*.mp4
 .vscode
 .idea
 *.pkl
@@ -132,3 +134,4 @@ work_dirs/
 # avoid soft links created by MIM
 mmaction/configs/*
 mmaction/tools/*
+*.DS_Store
