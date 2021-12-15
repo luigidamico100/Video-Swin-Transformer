@@ -60,7 +60,7 @@ test_pipeline = [
     dict(type='ToTensor', keys=['imgs'])
 ]
 data = dict(
-    videos_per_gpu=8,
+    videos_per_gpu=2,
     workers_per_gpu=4,
     val_dataloader=dict(
         videos_per_gpu=1,
@@ -102,11 +102,11 @@ lr_config = dict(
     warmup_by_epoch=True,
     warmup_iters=2.5
 )
-total_epochs = 30
+total_epochs = 3
 
 # runtime settings
 checkpoint_config = dict(interval=1)
-work_dir = './work_dirs/k400_swin_tiny_patch244_window877.py'
+work_dir = './work_dirs/k400_VideoDataset_swin_tiny_patch244_window877.py'
 find_unused_parameters = False
 
 
