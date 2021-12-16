@@ -7,9 +7,10 @@ model=dict(backbone=dict(patch_size=(2,4,4), drop_path_rate=0.1), test_cfg=dict(
 dataset_type = 'RawframeDataset'
 data_root = '/home/luigi.damico/ICPR/foldtest_0/rawframes_train'
 data_root_val = '/home/luigi.damico/ICPR/foldtest_0/rawframes_val'
+data_root_test = '/home/luigi.damico/ICPR/foldtest_0/rawframes_test'
 ann_file_train = '/home/luigi.damico/ICPR/foldtest_0/ICPR_train_list_rawframes.txt'
 ann_file_val = '/home/luigi.damico/ICPR/foldtest_0/ICPR_val_list_rawframes.txt'
-ann_file_test = '/home/luigi.damico/ICPR/foldtest_0/ICPR_val_list_rawframes.txt'
+ann_file_test = '/home/luigi.damico/ICPR/foldtest_0/ICPR_test_list_rawframes.txt'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_bgr=False)
 train_pipeline = [
@@ -57,7 +58,7 @@ test_pipeline = [
     dict(type='ToTensor', keys=['imgs'])
 ]
 data = dict(
-    videos_per_gpu=2,
+    videos_per_gpu=4,
     workers_per_gpu=4,
     val_dataloader=dict(
         videos_per_gpu=1,
@@ -80,7 +81,7 @@ data = dict(
     test=dict(
         type=dataset_type,
         ann_file=ann_file_test,
-        data_prefix=data_root_val,
+        data_prefix=data_root_test,
         pipeline=test_pipeline))
 evaluation = dict(
     interval=5, metrics=['top_k_accuracy', 'mean_class_accuracy'])
@@ -117,3 +118,9 @@ find_unused_parameters = False
 #    bucket_size_mb=-1,
 #    use_fp16=True,
 #)
+
+# python tools/train.py <CONFIG_FILE> --cfg-options model.backbone.pretrained=<PRETRAIN_MODEL> [model.backbone.use_checkpoint=True] [other optional arguments]
+# python tools/train.py configs/recognition/swin/swin_tiny_patch244_window877_ICPR_1k_rawframe.py  --cfg-options model.backbone.pretrained=backbones/swin_tiny_patch4_window7_224.pth
+
+# python tools/test.py <CONFIG_FILE> <CHECKPOINT_FILE> --eval top_k_accuracy
+# python tools/test.py configs/recognition/swin/swin_tiny_patch244_window877_ICPR_1k_rawframe.py work_dirs/ICPR_RawframeDataset_swin_tiny_patch244_window877.py/latest.pth --eval top_k_accuracy
