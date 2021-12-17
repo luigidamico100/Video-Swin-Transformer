@@ -13,101 +13,70 @@ from random import choice
 import cv2
 import os
 import torch
+import random
 NUM_ROWS = 224
-NUM_FRAMES = 2
 
 on_cuda = torch.cuda.is_available()
 
 
-def default_mat_loader(path, num_rows=NUM_ROWS, return_value=False, mode='fixed_number_of_frames', get_information=False):
+def default_mat_loader(path, num_frames=2, verbose=False):
 
     matdata = loadmat(path)
-    valore = matdata['valore']
-        
-    frame_keys = []
-    if mode == 'fixed_number_of_frames':
-        count_frames = 0
-        data = []
-        for k in matdata.keys():
-            if k.startswith('f') and len(k) < 3 and count_frames < NUM_FRAMES:
-                # print(k)
-                count_frames += 1
-                data.append(matdata[k][:num_rows])
-                frame_keys.append(k)
-        data = np.array(data)
-    elif mode == 'fixed_number_of_frames_1ch':
-        data = [matdata[k][:num_rows] for k in matdata.keys() if k.startswith('f') and len(k) < 3]
-        data = data[:NUM_FRAMES]
-        data = np.array(data)
-        data = np.delete(data, 0, 3)
-        data = np.delete(data, 0, 3)
-    elif mode == 'entire_clip':
-        data = []
-        for k in matdata.keys():
-            if k.startswith('f') and len(k) < 3:
-                data.append(matdata[k][:num_rows])
-                frame_keys.append(k)
-        data = np.array(data)
-    elif mode == 'random_frame_from_clip' or mode == 'random_frame_from_clip_old':
-        f = choice([k for k in matdata.keys() if k.startswith('f') and len(k) < 3])
-        data = matdata[f][:num_rows]
+    data = []
+    frame_keys = [k for k in matdata.keys() if k.startswith('f') and len(k)<3]
+    startframe_idx = random.randint(0, len(frame_keys)-num_frames)
+    selected_frame_keys = frame_keys[startframe_idx:startframe_idx+num_frames]
+    if verbose:
+        print(path)
+        print(frame_keys) 
+        print(selected_frame_keys)
+        print('-'*10)
+    for k in selected_frame_keys:
+            data.append(matdata[k][:NUM_ROWS])
+    data = np.array(data)
 
+    processed_video_path = path.split('/')
+    information_dict = {
+            'bimbo_name': str(matdata['bimbo_name'][0]),
+            'classe': str(matdata['classe'][0]),
+            'esame_name': str(matdata['esame_name'][0]),
+            'paziente': str(matdata['paziente'][0][0]),
+            'emogas_index': matdata['valore'][0][0] / 480.,
+            'video_name': str(matdata['video_name'][0]),
+            'processed_video_name': processed_video_path[-2] + '/' + processed_video_path[-1],
+            'frame_key': str(selected_frame_keys), 
+            'total_clip_frames': len(frame_keys)
+        }
     
-    if get_information:
-        if len(frame_keys) > 0:
-            processed_video_path = path.split('/')
-            information_dit = [{
-                'bimbo_name': str(matdata['bimbo_name'][0]),
-                'classe': str(matdata['classe'][0]),
-                'esame_name': str(matdata['esame_name'][0]),
-                'paziente': str(matdata['paziente'][0][0]),
-                'valore': str(matdata['valore'][0][0]),
-                'video_name': str(matdata['video_name'][0]),
-                'processed_video_name': processed_video_path[-2] + '/' + processed_video_path[-1],
-                'frame_key': k, 
-                'total_clip_frames': len(data)
-                } for k in frame_keys]
-        else:
-            processed_video_path = path.split('/')
-            information_dit = {
-                'bimbo_name': str(matdata['bimbo_name'][0]),
-                'classe': str(matdata['classe'][0]),
-                'esame_name': str(matdata['esame_name'][0]),
-                'paziente': str(matdata['paziente'][0][0]),
-                'valore': str(matdata['valore'][0][0]),
-                'video_name': str(matdata['video_name'][0]),
-                'processed_video_name': processed_video_path[-2] + '/' + processed_video_path[-1],
-                'frame_key': 'None', 
-                'total_clip_frames': len(data)
-            }
-        return data, float(valore.item()/480.), information_dit
-    else:
-        return data, float(valore.item()/480.)
+    return data, information_dict
     
     
 #%%
 
-dataset_test = pd.read_csv('/home/luigi.damico/DL_QLUS/Experiments/experiment_allfold_exp_0/evaluation_dataframe.csv' if on_cuda else'/Volumes/SD Card/Thesis/Experiments/models_training/experiment_allfold_exp_0/evaluation_dataframe.csv')
+dataset_test = pd.read_csv('/home/luigi.damico/DL_QLUS/Experiments/experiment_allfold_exp_0/evaluation_dataframe.csv' if on_cuda else'/Volumes/SD Card/Thesis/Experiments/models_training/experiment_allfold_exp_0/evaluation_dataframe.csv', index_col=0)
+dataset_test.drop(index='RDS/R_45_1_2.mat	f0', inplace=True)
 n_folds = 10
 dataset_test[['class','mat_name']] = dataset_test['processed_video_name'].str.split('/', expand=True)
 
 dict_fold_list = {fold:list((dataset_test[dataset_test['fold']==fold]['mat_name']).unique()) for fold in range(n_folds)}
-
+num_frames = 2
+verbose = False
 
 #%% main
 
 
 
 dataset_in_path = '/mnt/disk2/diego.gragnaniello/Eco/ICPR/Dataset_processato/Dataset_f/' if on_cuda else '/Volumes/SD Card/Thesis/ICPR/Dataset_processato/Dataset_f/'
-main_out_path = '/home/luigi.damico/ICPR/' if on_cuda else '/Volumes/SD Card/Thesis/ICPR/Dataset_rawframe/ICPR/'
+root_out_path = f'/home/luigi.damico/ICPR_datasets/ICPR_rawframes_numframes{num_frames}/' if on_cuda else f'/Volumes/SD Card/Thesis/ICPR/Dataset_rawframe/ICPR_numframes{num_frames}/'
 classes = ['BEST', 'RDS']
 phases = ['train', 'val', 'test']
 
 
 # main -> fold_test -> phase -> class -> video -> img
+os.mkdir(root_out_path)
 for fold_test in range(n_folds):
     print('Starting fold_test: ' + str(fold_test))
-    fold_out_path = main_out_path + 'foldtest_' + str(fold_test) + '/'
+    fold_out_path = root_out_path + 'foldtest_' + str(fold_test) + '/'
     os.mkdir(fold_out_path)
 
     for phase in phases:
@@ -124,6 +93,7 @@ for fold_test in range(n_folds):
         elif phase == 'test':
             video_list = dict_fold_list[fold_test]
         df_annotation = pd.DataFrame(columns=['frame_name', 'n_frames', 'class'])
+        df_informations = pd.DataFrame(columns=['processed_video_name', 'bimbo_name', 'classe', 'esame_name', 'paziente', 'emogas_index', 'video_name', 'frame_key', 'total_clip_frames'])
         
         for class_ in [class_ for class_ in os.listdir(dataset_in_path) if class_ in classes]:
             print('---- Starting for class: ' + class_)
@@ -133,7 +103,8 @@ for fold_test in range(n_folds):
             for video in [video for video in os.listdir(class_in_path) if video in video_list]:
                 # print(video)
                 video_in_path = class_in_path + video
-                video_np = default_mat_loader(video_in_path,mode='fixed_number_of_frames')[0]
+                video_np, info_dict = default_mat_loader(video_in_path, num_frames=num_frames, verbose=verbose)
+                df_informations = df_informations.append(info_dict, ignore_index=True)
                 video_out_path = class_out_path + video[:-4] + '/'
                 os.mkdir(video_out_path)
                 df_annotation = df_annotation.append({'frame_name':class_+'/'+video[:-4], 'n_frames':len(video_np), 'class':1 if class_=='RDS' else 0}, ignore_index=True)
@@ -141,7 +112,7 @@ for fold_test in range(n_folds):
                     img_out_path = video_out_path + f'img_{(idx+1):05d}.jpg'
                     cv2.imwrite(img_out_path, img_np)
         df_annotation.to_csv(fold_out_path + 'ICPR_' + phase + '_list_rawframes.txt', index=False, sep=' ', header=False)
-        
+        df_informations.to_csv(fold_out_path + 'ICPR_' + phase + 'list_informations.csv', index=False)
     
 
         
