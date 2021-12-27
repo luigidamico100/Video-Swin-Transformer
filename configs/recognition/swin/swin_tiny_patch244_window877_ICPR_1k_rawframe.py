@@ -12,7 +12,7 @@ ann_file_train = '/home/luigi.damico/ICPR/foldtest_0/ICPR_train_list_rawframes.t
 ann_file_val = '/home/luigi.damico/ICPR/foldtest_0/ICPR_val_list_rawframes.txt'
 ann_file_test = '/home/luigi.damico/ICPR/foldtest_0/ICPR_test_list_rawframes.txt'
 img_norm_cfg = dict(
-    mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_bgr=False)
+    mean=[31.875, 31.875, 31.875], std=[36.592, 36.592, 36.592], to_bgr=False)
 train_pipeline = [
     dict(type='SampleFrames', clip_len=32, frame_interval=2, num_clips=1),
     dict(type='RawFrameDecode'),
