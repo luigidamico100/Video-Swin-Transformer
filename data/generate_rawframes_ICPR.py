@@ -59,7 +59,7 @@ n_folds = 10
 dataset_test[['class','mat_name']] = dataset_test['processed_video_name'].str.split('/', expand=True)
 
 dict_fold_list = {fold:list((dataset_test[dataset_test['fold']==fold]['mat_name']).unique()) for fold in range(n_folds)}
-num_frames = 2
+num_frames = 6
 verbose = False
 
 #%% main
@@ -112,7 +112,7 @@ for fold_test in range(n_folds):
                     img_out_path = video_out_path + f'img_{(idx+1):05d}.jpg'
                     cv2.imwrite(img_out_path, img_np)
         df_annotation.to_csv(fold_out_path + 'ICPR_' + phase + '_list_rawframes.txt', index=False, sep=' ', header=False)
-        df_informations.to_csv(fold_out_path + 'ICPR_' + phase + 'list_informations.csv', index=False)
+        df_informations.to_csv(fold_out_path + 'ICPR_' + phase + '_list_informations.csv', index=False)
     
 
         
