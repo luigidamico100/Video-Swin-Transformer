@@ -2,7 +2,7 @@ _base_ = [
     '../../_base_/models/swin/swin_tiny.py', '../../_base_/default_runtime.py'
 ]
 model=dict(backbone=dict(patch_size=(2,4,4), drop_path_rate=0.1), test_cfg=dict(max_testing_views=4))
-
+model['test_cfg'] = dict(average_clips='prob')
 # dataset settings
 dataset_type = 'RawframeDataset'
 data_root = '/home/luigi.damico/ICPR/foldtest_0/rawframes_train'
@@ -58,7 +58,7 @@ test_pipeline = [
     dict(type='ToTensor', keys=['imgs'])
 ]
 data = dict(
-    videos_per_gpu=4,
+    videos_per_gpu=2,
     workers_per_gpu=4,
     val_dataloader=dict(
         videos_per_gpu=1,
@@ -100,7 +100,7 @@ lr_config = dict(
     warmup_by_epoch=True,
     warmup_iters=2.5
 )
-total_epochs = 3
+total_epochs = 20
 
 # runtime settings
 checkpoint_config = dict(interval=1)
@@ -120,7 +120,9 @@ find_unused_parameters = False
 #)
 
 # python tools/train.py <CONFIG_FILE> --cfg-options model.backbone.pretrained=<PRETRAIN_MODEL> [model.backbone.use_checkpoint=True] [other optional arguments]
-# python tools/train.py configs/recognition/swin/swin_tiny_patch244_window877_ICPR_1k_rawframe.py  --cfg-options model.backbone.pretrained=backbones/swin_tiny_patch4_window7_224.pth
+# python tools/train.py configs/recognition/swin/swin_tiny_patch244_window877_ICPR_1k_rawframe.py  --cfg-options model.backbone.pretrained=backbones/swin_tiny_patch4_window7_224.pth data_root='/home/luigi.damico/ICPR/foldtest_0/rawframes_train'
 
 # python tools/test.py <CONFIG_FILE> <CHECKPOINT_FILE> --eval top_k_accuracy
-# python tools/test.py configs/recognition/swin/swin_tiny_patch244_window877_ICPR_1k_rawframe.py work_dirs/ICPR_RawframeDataset_swin_tiny_patch244_window877.py/latest.pth --eval top_k_accuracy
+# python tools/test.py configs/recognition/swin/swin_tiny_patch244_window877_ICPR_1k_rawframe.py work_dirs/ICPR_RawframeDataset_swin_tiny_patch244_window877.py/latest.pth --eval top_k_accuracy --out test_results/outfile.pkl
+
+# python tools/analysis/eval_metric.py configs/recognition/swin/swin_tiny_patch244_window877_ICPR_1k_rawframe.py test_results/outfile.pkl --eval top_k_accuracy
