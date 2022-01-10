@@ -19,13 +19,16 @@ NUM_ROWS = 224
 on_cuda = torch.cuda.is_available()
 
 
-def default_mat_loader(path, num_frames=2, verbose=False):
+def default_mat_loader(path, num_frames=None, verbose=False):
 
     matdata = loadmat(path)
     data = []
     frame_keys = [k for k in matdata.keys() if k.startswith('f') and len(k)<3]
-    startframe_idx = random.randint(0, len(frame_keys)-num_frames)
-    selected_frame_keys = frame_keys[startframe_idx:startframe_idx+num_frames]
+    if num_frames:
+        startframe_idx = random.randint(0, len(frame_keys)-num_frames)
+        selected_frame_keys = frame_keys[startframe_idx:startframe_idx+num_frames]
+    else:
+        selected_frame_keys = frame_keys
     if verbose:
         print(path)
         print(frame_keys) 
@@ -59,7 +62,7 @@ n_folds = 10
 dataset_test[['class','mat_name']] = dataset_test['processed_video_name'].str.split('/', expand=True)
 
 dict_fold_list = {fold:list((dataset_test[dataset_test['fold']==fold]['mat_name']).unique()) for fold in range(n_folds)}
-num_frames = 6
+num_frames = None
 verbose = False
 
 #%% main
