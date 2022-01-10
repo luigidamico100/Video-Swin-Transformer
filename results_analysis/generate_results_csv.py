@@ -10,7 +10,7 @@ import pickle
 import os
 import numpy as np
 import pandas as pd
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, confusion_matrix
 import glob
 import torch
 import json
@@ -74,7 +74,7 @@ def get_evaluation_data(work_dir_path, dataset_dir_path, num_epochs, num_folds=1
     return dataframe_stats
 
 
-def get_information_data(work_dir_path, dataset_dir_path, best_epoch_dict, num_folds=10, phase='val'):
+def get_predictions_df(work_dir_path, dataset_dir_path, best_epoch_dict, num_folds=10, phase='val'):
     dataset_final = pd.DataFrame()
     
     for testfold in range(0, num_folds):
@@ -88,25 +88,90 @@ def get_information_data(work_dir_path, dataset_dir_path, best_epoch_dict, num_f
         dataset_information['predicted_class'] = prediction.argmax(axis=1)
         dataset_information['true_class'] = (dataset_information['classe'] == 'RDS').astype(int)
         dataset_final = dataset_final.append(dataset_information)
+        
+    dataset_final['ospedale'] = create_ospedale_column(dataset_final)
 
     return dataset_final
 
 
-def find_best_model(dataframe_eval, work_dir_path, num_folds, keep_only_best=False):
+def find_best_model(training_history_df, work_dir_path, num_folds, keep_only_best=False):
 
     def keep_only_best_fun(epoch_to_be_kept, dir_path):
         for model_pth in glob.glob(dir_path + '*.pth'):
             if model_pth.split('/')[-1] != 'epoch_' + str(epoch_to_be_kept) + '.pth':
                 os.remove(model_pth)
 
-    best_epoch_dict = {}
+    best_epochs_dict = {}
     for testfold in range(0, num_folds):
-        best_epoch = pd.to_numeric(dataframe_eval.loc[testfold]['Loss_val']).idxmin()
-        best_epoch_dict[testfold] = best_epoch
+        best_epoch = pd.to_numeric(training_history_df.loc[testfold]['Loss_val']).idxmin()
+        best_epochs_dict[testfold] = best_epoch
         if keep_only_best:
             dir_path = work_dir_path + 'training/testfold_' + str(testfold) + '/'
             keep_only_best_fun(epoch_to_be_kept=best_epoch, dir_path=dir_path)
-    return best_epoch_dict
+    return best_epochs_dict
+
+
+def get_training_history_df(work_dir_path, dataset_dir_path, num_epochs, num_folds):
+    train_dataframe_eval = get_training_data(work_dir_path, num_epochs, num_folds=num_folds)
+    val_dataframe_eval = get_evaluation_data(work_dir_path, dataset_dir_path, num_epochs, num_folds=num_folds, phase='val')
+    test_dataframe_eval = get_evaluation_data(work_dir_path, dataset_dir_path, num_epochs, num_folds=num_folds, phase='test')
+    
+    training_history_df = pd.merge(train_dataframe_eval, val_dataframe_eval, left_index=True, right_index=True)
+    training_history_df = pd.merge(training_history_df, test_dataframe_eval, left_index=True, right_index=True)
+    
+    return training_history_df
+    
+
+def get_best_epochs_df(training_stats_df, best_epochs_dict):
+    results_df = pd.DataFrame(columns=['Loss_val', 'Accuracy_test'])
+    for testfold in training_stats_df.index.get_level_values('testfold').unique():
+        results_df = results_df.append(training_stats_df.loc[testfold, best_epochs_dict[testfold]][['Loss_val', 'Accuracy_test']])
+    return results_df
+
+
+def get_results_df(predictions_df):
+    accuracy = accuracy_score(predictions_df['true_class'], predictions_df['predicted_class'])
+    conf_matrix = confusion_matrix(predictions_df['true_class'], predictions_df['predicted_class'])
+    conf_matrix_norm = confusion_matrix(predictions_df['true_class'], predictions_df['predicted_class'], normalize='true')
+    metrics_list = [accuracy, conf_matrix, conf_matrix_norm]
+    return metrics_list
+
+
+def get_results_df_hospital(predictions_df):
+    predictions_df_naples = predictions_df[predictions_df['ospedale']=='Naples']
+    predictions_df_florence = predictions_df[predictions_df['ospedale']=='Florence']
+    predictions_df_milan = predictions_df[predictions_df['ospedale']=='Milan']
+    
+    results_df_hospital = pd.DataFrame(columns=['Accuracy', 'Conf_matrix', 'Conf_matrix_norm'])
+    results_df_hospital.loc['Naples'] = get_results_df(predictions_df_naples)
+    results_df_hospital.loc['Florence'] = get_results_df(predictions_df_florence)
+    results_df_hospital.loc['Milan'] = get_results_df(predictions_df_milan)
+    results_df_hospital.loc['Overall'] = get_results_df(predictions_df)
+    
+    return results_df_hospital
+    
+
+def get_results_df_nWrongPatients(predictions_df):
+    
+    predictions_df_wrong = predictions_df[predictions_df['true_class']!=predictions_df['predicted_class']]
+    predictions_df_wrong_grupbyPatients = predictions_df_wrong.groupby(by=['bimbo_name', 'classe', 'ospedale']).count()     # could be also .mean() or others...
+    predictions_df_wrong_grupbyPatients['n_patients_misclassfied'] = 1
+    predictions_df_wrong_grupbyHospClass = predictions_df_wrong_grupbyPatients.groupby(['classe', 'ospedale']).count()
+    
+    return predictions_df_wrong_grupbyHospClass['n_patients_misclassfied']
+    
+
+def create_ospedale_column(dataset):
+    ospedale_col = pd.Series(index=dataset.index, dtype=object)
+    for idx in dataset.index:
+        bimbo_name = dataset.loc[idx]['bimbo_name']
+        if 'Buzzi' in bimbo_name:
+            ospedale_col.loc[idx] = 'Milan'
+        elif 'Firenze' in bimbo_name:
+            ospedale_col.loc[idx] = 'Florence'
+        else:
+            ospedale_col.loc[idx] = 'Naples'
+    return ospedale_col
 
 
 def parse_args():
@@ -122,12 +187,15 @@ def parse_args():
 
 #%%
     
-# work_dir_path = '/home/luigi.damico/Video-Swin-Transformer/work_dirs/experiment_10/' if on_cuda else '/Users/luigidamico/Documents/GitHub/Video-Swin-Transformer/work_dirs/experiment_10/'
-# dataset_dir_path = '/home/luigi.damico/ICPR_datasets/ICPR_rawframes_numframes2/' if on_cuda else '/Volumes/SD Card/Thesis/ICPR/Dataset_rawframe/ICPR_rawframes_numframes2/'
-# num_epochs = 20
-# num_folds = 10
-# keep_only_best = 0
+work_dir_path = '/home/luigi.damico/Video-Swin-Transformer/work_dirs/experiment_10/' if on_cuda else '/Users/luigidamico/Documents/GitHub/Video-Swin-Transformer/work_dirs/experiment_22/'
+dataset_dir_path = '/home/luigi.damico/ICPR_datasets/ICPR_rawframes_numframes2/' if on_cuda else '/Volumes/SD Card/Thesis/ICPR/Dataset_rawframe/ICPR_allFrames/'
+results_path = work_dir_path + 'results/'
+num_epochs = 20
+num_folds = 10
+keep_only_best = 0
 
+
+#%%
 
 if __name__ == '__main__':
     
@@ -140,18 +208,20 @@ if __name__ == '__main__':
     keep_only_best = int(args.keep_only_best)
     #keep_only_best = 0
     
-    train_dataframe_eval = get_training_data(work_dir_path, num_epochs, num_folds=num_folds)
-    val_dataframe_eval = get_evaluation_data(work_dir_path, dataset_dir_path, num_epochs, num_folds=num_folds, phase='val')
-    test_dataframe_eval = get_evaluation_data(work_dir_path, dataset_dir_path, num_epochs, num_folds=num_folds, phase='test')
-    
-    dataframe_eval = pd.merge(train_dataframe_eval, val_dataframe_eval, left_index=True, right_index=True)
-    dataframe_eval = pd.merge(dataframe_eval, test_dataframe_eval, left_index=True, right_index=True)
-
-    best_epoch_dict = find_best_model(dataframe_eval, work_dir_path, num_folds, keep_only_best=keep_only_best)
-
-    test_dataframe_information = get_information_data(work_dir_path, dataset_dir_path, best_epoch_dict, num_folds=num_folds, phase='test')
+    training_history_df = get_training_history_df(work_dir_path, dataset_dir_path, num_epochs, num_folds)
+    best_epochs_dict = find_best_model(training_history_df, work_dir_path, num_folds, keep_only_best=keep_only_best)
+    val_predictions_df = get_predictions_df(work_dir_path, dataset_dir_path, best_epochs_dict, num_folds=num_folds, phase='val')
+    test_predictions_df = get_predictions_df(work_dir_path, dataset_dir_path, best_epochs_dict, num_folds=num_folds, phase='test')
+    best_epochs_df = get_best_epochs_df(training_history_df, best_epochs_dict)
+    test_results_df_hospital = get_results_df_hospital(test_predictions_df)
+    test_results_df_nWrongPatients = get_results_df_nWrongPatients(test_predictions_df)
 
     os.mkdir(results_path)
-    dataframe_eval.to_csv(results_path + 'results_stats.csv')
-    test_dataframe_information.to_csv(results_path + 'results_information.csv')
-    pickle.dump(best_epoch_dict, open(results_path + "best_epoch_dict.pkl", "wb"))
+    training_history_df.to_csv(results_path + 'training_history_df.csv')
+    val_predictions_df.to_csv(results_path + 'val_predictions_df.csv')
+    test_predictions_df.to_csv(results_path + 'test_predictions_df.csv')
+    pickle.dump(best_epochs_dict, open(results_path + "best_epoch_dict.pkl", "wb"))
+    best_epochs_df.to_csv(result_path + 'best_epochs_df.csv')
+    test_results_df_hospital.to_csv(result_path + 'test_results_df_hospital.csv')
+    test_results_df_nWrongPatients.to_csv(result_path + 'test_results_df_nWrongPatients.csv')
+    
