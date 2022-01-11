@@ -135,3 +135,4 @@ work_dirs/
 mmaction/configs/*
 mmaction/tools/*
 *.DS_Store
+results_analysis/normalization_analysis.py
