@@ -1,7 +1,13 @@
 _base_ = [
     '../../_base_/models/swin/swin_tiny.py', '../../_base_/default_runtime.py'
 ]
-model=dict(backbone=dict(patch_size=(2,4,4), drop_path_rate=0.1), test_cfg=dict(max_testing_views=4))
+
+num_frames_per_video = 10
+
+model=dict(
+    backbone=dict(patch_size=(2,4,4), drop_path_rate=0.1),
+    test_cfg=dict(max_testing_views=4),
+    cls_head=dict(num_classes=2))
 model['test_cfg'] = dict(average_clips='prob')
 # dataset settings
 dataset_type = 'RawframeDataset'
@@ -12,7 +18,10 @@ ann_file_train = '/home/luigi.damico/ICPR/foldtest_0/ICPR_train_list_rawframes.t
 ann_file_val = '/home/luigi.damico/ICPR/foldtest_0/ICPR_val_list_rawframes.txt'
 ann_file_test = '/home/luigi.damico/ICPR/foldtest_0/ICPR_test_list_rawframes.txt'
 img_norm_cfg = dict(
+    #mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_bgr=False)
     mean=[31.875, 31.875, 31.875], std=[36.592, 36.592, 36.592], to_bgr=False)
+
+'''
 train_pipeline = [
     dict(type='SampleFrames', clip_len=32, frame_interval=2, num_clips=1),
     dict(type='RawFrameDecode'),
@@ -25,6 +34,24 @@ train_pipeline = [
     dict(type='Collect', keys=['imgs', 'label'], meta_keys=[]),
     dict(type='ToTensor', keys=['imgs', 'label'])
 ]
+'''
+
+train_pipeline = [
+    dict(type='SampleFrames', clip_len=num_frames_per_video, num_clips=1),
+    dict(type='RawFrameDecode'),
+    dict(type='RandomResizedCrop', area_range=(.6, 1.), aspect_ratio_range=(0.8, 1.5)),
+    dict(type='Resize', scale=(224, 461), keep_ratio=False),
+    dict(type='Flip', flip_ratio=0.5),
+    dict(type='ColorJitter', brightness=.25, contrast=.25, saturation=.0, hue=.0),
+    #dict(type='ColorJitter', color_space_aug=True),
+    #dict(type='MyTransform'),
+    dict(type='Normalize', **img_norm_cfg),
+    dict(type='FormatShape', input_format='NCTHW'),
+    dict(type='Collect', keys=['imgs', 'label'], meta_keys=[]),
+    dict(type='ToTensor', keys=['imgs', 'label'])
+]
+
+'''
 val_pipeline = [
     dict(
         type='SampleFrames',
@@ -41,22 +68,37 @@ val_pipeline = [
     dict(type='Collect', keys=['imgs', 'label'], meta_keys=[]),
     dict(type='ToTensor', keys=['imgs'])
 ]
-test_pipeline = [
-    dict(
-        type='SampleFrames',
-        clip_len=32,
-        frame_interval=2,
-        num_clips=4,
-        test_mode=True),
+'''
+
+val_pipeline = [
+    dict(type='SampleFrames', clip_len=num_frames_per_video, test_mode=True),
     dict(type='RawFrameDecode'),
-    dict(type='Resize', scale=(-1, 224)),
-    dict(type='ThreeCrop', crop_size=224),
-    dict(type='Flip', flip_ratio=0),
+    dict(type='Resize', scale=(224, 461)),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs', 'label'], meta_keys=[]),
     dict(type='ToTensor', keys=['imgs'])
 ]
+
+# test_pipeline = [
+#     dict(
+#         type='SampleFrames',
+#         clip_len=32,
+#         frame_interval=2,
+#         num_clips=4,
+#         test_mode=True),
+#     dict(type='RawFrameDecode'),
+#     dict(type='Resize', scale=(-1, 224)),
+#     dict(type='ThreeCrop', crop_size=224),
+#     dict(type='Flip', flip_ratio=0),
+#     dict(type='Normalize', **img_norm_cfg),
+#     dict(type='FormatShape', input_format='NCTHW'),
+#     dict(type='Collect', keys=['imgs', 'label'], meta_keys=[]),
+#     dict(type='ToTensor', keys=['imgs'])
+# ]
+
+test_pipeline = val_pipeline
+
 data = dict(
     videos_per_gpu=2,
     workers_per_gpu=4,
@@ -106,6 +148,8 @@ total_epochs = 20
 checkpoint_config = dict(interval=1)
 work_dir = './work_dirs/ICPR_RawframeDataset_swin_tiny_patch244_window877.py'
 find_unused_parameters = False
+#load_from = '/home/luigi.damico/Video-Swin-Transformer/backbone/swin_tiny_patch4_window7_224.pth'
+#load_from = 'model.backbone.pretrained=/home/luigi.damico/Video-Swin-Transformer/work_dirs/experiment_22/training/testfold_0/epoch_16.pth'
 
 
 # do not use mmdet version fp16
