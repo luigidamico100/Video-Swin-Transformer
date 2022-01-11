@@ -221,7 +221,7 @@ if __name__ == '__main__':
     val_predictions_df.to_csv(results_path + 'val_predictions_df.csv')
     test_predictions_df.to_csv(results_path + 'test_predictions_df.csv')
     pickle.dump(best_epochs_dict, open(results_path + "best_epoch_dict.pkl", "wb"))
-    best_epochs_df.to_csv(result_path + 'best_epochs_df.csv')
-    test_results_df_hospital.to_csv(result_path + 'test_results_df_hospital.csv')
-    test_results_df_nWrongPatients.to_csv(result_path + 'test_results_df_nWrongPatients.csv')
+    best_epochs_df.to_csv(results_path + 'best_epochs_df.csv')
+    test_results_df_hospital.to_csv(results_path + 'test_results_df_hospital.csv')
+    test_results_df_nWrongPatients.to_csv(results_path + 'test_results_df_nWrongPatients.csv')
     
