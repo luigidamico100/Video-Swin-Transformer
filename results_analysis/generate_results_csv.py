@@ -16,11 +16,14 @@ import torch
 import json
 from collections import defaultdict
 import argparse
+import matplotlib.pyplot as plt
+from scipy.stats import spearmanr
+np.set_printoptions(3)
 
 on_cuda = torch.cuda.is_available()
 
 
-def get_training_data(work_dir_path, num_epochs, num_folds=10):
+def get_training_data(work_dir_path, num_folds=10):
     
     def load_json_logs(json_logs):
         # load and convert json_logs to log_dict, key is epoch, value is a sub dict
@@ -41,6 +44,7 @@ def get_training_data(work_dir_path, num_epochs, num_folds=10):
                         log_dict[epoch][k].append(v)
         return log_dicts
 
+    num_epochs =len(load_json_logs(glob.glob(work_dir_path + 'training/testfold_0/*.json'))[0])
     idx = pd.MultiIndex.from_product([range(0,num_folds), range(1, num_epochs+1)], names=['testfold', 'epoch'])
     dataframe_stats = pd.DataFrame(columns=['Loss_train', 'Accuracy_train'], index=idx)
  
@@ -49,8 +53,7 @@ def get_training_data(work_dir_path, num_epochs, num_folds=10):
         log_dicts = load_json_logs(train_data_path)
         for epoch, value in log_dicts[0].items():
             dataframe_stats.loc[testfold, epoch] = [sum(value['loss'])/len(value['loss']), sum(value['top1_acc'])/len(value['top1_acc'])]
-
-    return dataframe_stats
+    return dataframe_stats, num_epochs
 
 
 def get_evaluation_data(work_dir_path, dataset_dir_path, num_epochs, num_folds=10, phase='val'):
@@ -74,13 +77,26 @@ def get_evaluation_data(work_dir_path, dataset_dir_path, num_epochs, num_folds=1
     return dataframe_stats
 
 
-def get_predictions_df(work_dir_path, dataset_dir_path, best_epoch_dict, num_folds=10, phase='val'):
+def get_training_history_df(work_dir_path, dataset_dir_path, num_folds):
+    train_dataframe_eval, num_epochs = get_training_data(work_dir_path, num_folds=num_folds)
+    val_dataframe_eval = get_evaluation_data(work_dir_path, dataset_dir_path, num_epochs, num_folds=num_folds,
+                                             phase='val')
+    test_dataframe_eval = get_evaluation_data(work_dir_path, dataset_dir_path, num_epochs, num_folds=num_folds,
+                                              phase='test')
+
+    training_history_df = pd.merge(train_dataframe_eval, val_dataframe_eval, left_index=True, right_index=True)
+    training_history_df = pd.merge(training_history_df, test_dataframe_eval, left_index=True, right_index=True)
+
+    return training_history_df, num_epochs
+
+
+def get_predictions_df(work_dir_path, dataset_dir_path, best_epochs_dict, num_folds=10, phase='val'):
     dataset_final = pd.DataFrame()
-    
+
     for testfold in range(0, num_folds):
         dataset_information = pd.read_csv(dataset_dir_path + 'foldtest_' + str(testfold) + '/ICPR_'  + phase + '_list_informations.csv', index_col=0)
 
-        prediction_path = work_dir_path + 'predictions/' + phase + '/testfold_' + str(testfold) + '/epoch_' + str(best_epoch_dict[testfold]) + '.pkl'
+        prediction_path = work_dir_path + 'predictions/' + phase + '/testfold_' + str(testfold) + '/epoch_' + str(best_epochs_dict[testfold]) + '.pkl'
         with open(prediction_path, 'rb') as f:
             prediction = np.array(pickle.load(f))
         dataset_information['testfold'] = testfold
@@ -111,43 +127,34 @@ def find_best_model(training_history_df, work_dir_path, num_folds, keep_only_bes
     return best_epochs_dict
 
 
-def get_training_history_df(work_dir_path, dataset_dir_path, num_epochs, num_folds):
-    train_dataframe_eval = get_training_data(work_dir_path, num_epochs, num_folds=num_folds)
-    val_dataframe_eval = get_evaluation_data(work_dir_path, dataset_dir_path, num_epochs, num_folds=num_folds, phase='val')
-    test_dataframe_eval = get_evaluation_data(work_dir_path, dataset_dir_path, num_epochs, num_folds=num_folds, phase='test')
-    
-    training_history_df = pd.merge(train_dataframe_eval, val_dataframe_eval, left_index=True, right_index=True)
-    training_history_df = pd.merge(training_history_df, test_dataframe_eval, left_index=True, right_index=True)
-    
-    return training_history_df
-    
-
-def get_best_epochs_df(training_stats_df, best_epochs_dict):
-    results_df = pd.DataFrame(columns=['Loss_val', 'Accuracy_test'])
-    for testfold in training_stats_df.index.get_level_values('testfold').unique():
-        results_df = results_df.append(training_stats_df.loc[testfold, best_epochs_dict[testfold]][['Loss_val', 'Accuracy_test']])
+def get_best_epochs_df(training_history_df, best_epochs_dict):
+    training_history_df = training_history_df.copy()
+    results_df = pd.DataFrame(columns=['Best_epoch', 'Loss_val', 'Accuracy_test'])
+    results_df.index.name = 'testfold'
+    training_history_df['Best_epoch'] = training_history_df.index.get_level_values('epoch')
+    for testfold in training_history_df.index.get_level_values('testfold').unique():
+        results_df.loc[testfold] = training_history_df.loc[testfold, best_epochs_dict[testfold]][['Best_epoch', 'Loss_val', 'Accuracy_test']]
     return results_df
 
 
-def get_results_df(predictions_df):
+def get_metrics_df(predictions_df):
     accuracy = accuracy_score(predictions_df['true_class'], predictions_df['predicted_class'])
     conf_matrix = confusion_matrix(predictions_df['true_class'], predictions_df['predicted_class'])
     conf_matrix_norm = confusion_matrix(predictions_df['true_class'], predictions_df['predicted_class'], normalize='true')
-    metrics_list = [accuracy, conf_matrix, conf_matrix_norm]
-    return metrics_list
+    spearman_corr = spearmanr(predictions_df['BEST_prob'], predictions_df['emogas_index'])[0]
+    metrics_list = [accuracy, conf_matrix, conf_matrix_norm, spearman_corr]
+    return np.array(metrics_list, dtype=object)
 
 
 def get_results_df_hospital(predictions_df):
     predictions_df_naples = predictions_df[predictions_df['ospedale']=='Naples']
     predictions_df_florence = predictions_df[predictions_df['ospedale']=='Florence']
     predictions_df_milan = predictions_df[predictions_df['ospedale']=='Milan']
-    
-    results_df_hospital = pd.DataFrame(columns=['Accuracy', 'Conf_matrix', 'Conf_matrix_norm'])
-    results_df_hospital.loc['Naples'] = get_results_df(predictions_df_naples)
-    results_df_hospital.loc['Florence'] = get_results_df(predictions_df_florence)
-    results_df_hospital.loc['Milan'] = get_results_df(predictions_df_milan)
-    results_df_hospital.loc['Overall'] = get_results_df(predictions_df)
-    
+    results_df_hospital = pd.DataFrame(columns=['Accuracy', 'Conf_matrix', 'Conf_matrix_norm', 'Spearman_corr'])
+    results_df_hospital.loc['Naples'] = get_metrics_df(predictions_df_naples)
+    results_df_hospital.loc['Florence'] = get_metrics_df(predictions_df_florence)
+    results_df_hospital.loc['Milan'] = get_metrics_df(predictions_df_milan)
+    results_df_hospital.loc['Overall'] = get_metrics_df(predictions_df)
     return results_df_hospital
     
 
@@ -174,11 +181,33 @@ def create_ospedale_column(dataset):
     return ospedale_col
 
 
+def plot_training(training_stats_df, testfold, outfile_path=None):
+    fig, axs = plt.subplots(2,1)
+    training_stats_df.loc[testfold][['Loss_train','Loss_val','Loss_test']].plot(ax=axs[0])
+    training_stats_df.loc[testfold][['Accuracy_train','Accuracy_val','Accuracy_test']].plot(ax=axs[1])
+    for ax in axs: ax.grid()
+    fig.suptitle(f'test fold: {testfold}')
+    if outfile_path: fig.savefig(outfile_path)
+
+
+def save_results_to_file(results_path, training_history_df, val_predictions_df, test_predictions_df, 
+                         best_epochs_dict, test_results_df_hospital, test_results_df_nWrongPatients):
+    os.mkdir(results_path)
+    os.mkdir(results_path+'training_history_plots')
+    training_history_df.to_csv(results_path + 'training_history_df.csv', float_format='%.3f')
+    val_predictions_df.to_csv(results_path + 'val_predictions_df.csv', float_format='%.3f')
+    test_predictions_df.to_csv(results_path + 'test_predictions_df.csv', float_format='%.3f')
+    pickle.dump(best_epochs_dict, open(results_path + "best_epoch_dict.pkl", "wb"))
+    best_epochs_df.to_csv(results_path + 'best_epochs_df.csv', float_format='%.3f')
+    test_results_df_hospital.to_csv(results_path + 'test_results_df_hospital.csv', float_format='%.3f')
+    test_results_df_nWrongPatients.to_csv(results_path + 'test_results_df_nWrongPatients.csv', float_format='%.3f')
+    for testfold in range(0, 10): plot_training(training_history_df, testfold=testfold, outfile_path=results_path+'training_history_plots/Test fold '+str(testfold)+'.jpg')
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Generate prediction results .csv files')
     parser.add_argument('work_dir_path', help='working directory')
     parser.add_argument('dataset_dir_path', help='dataset directory')
-    parser.add_argument('num_epochs', help='number of epochs')
     parser.add_argument('num_folds', help='number of folds')
     parser.add_argument('results_path', help='path of csv results')
     parser.add_argument('keep_only_best', help='decide if only the best model has to be kept')
@@ -187,10 +216,9 @@ def parse_args():
 
 #%%
     
-work_dir_path = '/home/luigi.damico/Video-Swin-Transformer/work_dirs/experiment_10/' if on_cuda else '/Users/luigidamico/Documents/GitHub/Video-Swin-Transformer/work_dirs/experiment_22/'
-dataset_dir_path = '/home/luigi.damico/ICPR_datasets/ICPR_rawframes_numframes2/' if on_cuda else '/Volumes/SD Card/Thesis/ICPR/Dataset_rawframe/ICPR_allFrames/'
+work_dir_path = '/home/luigi.damico/Video-Swin-Transformer/work_dirs_swin/experiment_2.1/' if on_cuda else '/Users/luigidamico/Documents/GitHub/work_dirs_swin/experiment_2.1/'
+dataset_dir_path = '/home/luigi.damico/ICPR_datasets/ICPR_allFrames/' if on_cuda else '/Volumes/SD Card/Thesis/ICPR/Dataset_rawframe/ICPR_allFrames/'
 results_path = work_dir_path + 'results/'
-num_epochs = 20
 num_folds = 10
 keep_only_best = 0
 
@@ -202,26 +230,18 @@ if __name__ == '__main__':
     args = parse_args()
     work_dir_path = args.work_dir_path
     dataset_dir_path = args.dataset_dir_path
-    num_epochs = int(args.num_epochs)
     num_folds = int(args.num_folds)
     results_path = args.results_path
     keep_only_best = int(args.keep_only_best)
-    #keep_only_best = 0
     
-    training_history_df = get_training_history_df(work_dir_path, dataset_dir_path, num_epochs, num_folds)
+    training_history_df, num_epochs = get_training_history_df(work_dir_path, dataset_dir_path, num_folds)
     best_epochs_dict = find_best_model(training_history_df, work_dir_path, num_folds, keep_only_best=keep_only_best)
     val_predictions_df = get_predictions_df(work_dir_path, dataset_dir_path, best_epochs_dict, num_folds=num_folds, phase='val')
     test_predictions_df = get_predictions_df(work_dir_path, dataset_dir_path, best_epochs_dict, num_folds=num_folds, phase='test')
     best_epochs_df = get_best_epochs_df(training_history_df, best_epochs_dict)
     test_results_df_hospital = get_results_df_hospital(test_predictions_df)
     test_results_df_nWrongPatients = get_results_df_nWrongPatients(test_predictions_df)
-
-    os.mkdir(results_path)
-    training_history_df.to_csv(results_path + 'training_history_df.csv')
-    val_predictions_df.to_csv(results_path + 'val_predictions_df.csv')
-    test_predictions_df.to_csv(results_path + 'test_predictions_df.csv')
-    pickle.dump(best_epochs_dict, open(results_path + "best_epoch_dict.pkl", "wb"))
-    best_epochs_df.to_csv(results_path + 'best_epochs_df.csv')
-    test_results_df_hospital.to_csv(results_path + 'test_results_df_hospital.csv')
-    test_results_df_nWrongPatients.to_csv(results_path + 'test_results_df_nWrongPatients.csv')
     
+    save_results_to_file(results_path, training_history_df, val_predictions_df, test_predictions_df,
+                         best_epochs_dict, test_results_df_hospital, test_results_df_nWrongPatients)
+
