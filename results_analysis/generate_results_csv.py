@@ -18,7 +18,7 @@ from collections import defaultdict
 import argparse
 import matplotlib.pyplot as plt
 from scipy.stats import spearmanr
-np.set_printoptions(3)
+np.set_printoptions(4)
 
 on_cuda = torch.cuda.is_available()
 
@@ -191,16 +191,17 @@ def plot_training(training_stats_df, testfold, outfile_path=None):
 
 
 def save_results_to_file(results_path, training_history_df, val_predictions_df, test_predictions_df, 
-                         best_epochs_dict, test_results_df_hospital, test_results_df_nWrongPatients):
+                         best_epochs_dict, val_results_df_hospital, test_results_df_hospital, test_results_df_nWrongPatients):
     os.mkdir(results_path)
     os.mkdir(results_path+'training_history_plots')
-    training_history_df.to_csv(results_path + 'training_history_df.csv', float_format='%.3f')
-    val_predictions_df.to_csv(results_path + 'val_predictions_df.csv', float_format='%.3f')
-    test_predictions_df.to_csv(results_path + 'test_predictions_df.csv', float_format='%.3f')
+    training_history_df.to_csv(results_path + 'training_history_df.csv', float_format='%.4f')
+    val_predictions_df.to_csv(results_path + 'val_predictions_df.csv', float_format='%.4f')
+    test_predictions_df.to_csv(results_path + 'test_predictions_df.csv', float_format='%.4f')
     pickle.dump(best_epochs_dict, open(results_path + "best_epoch_dict.pkl", "wb"))
-    best_epochs_df.to_csv(results_path + 'best_epochs_df.csv', float_format='%.3f')
-    test_results_df_hospital.to_csv(results_path + 'test_results_df_hospital.csv', float_format='%.3f')
-    test_results_df_nWrongPatients.to_csv(results_path + 'test_results_df_nWrongPatients.csv', float_format='%.3f')
+    best_epochs_df.to_csv(results_path + 'best_epochs_df.csv', float_format='%.4f')
+    val_results_df_hospital.to_csv(results_path + 'val_results_df_hospital.csv', float_format='%.4f')
+    test_results_df_hospital.to_csv(results_path + 'test_results_df_hospital.csv', float_format='%.4f')
+    test_results_df_nWrongPatients.to_csv(results_path + 'test_results_df_nWrongPatients.csv', float_format='%.4f')
     for testfold in range(0, 10): plot_training(training_history_df, testfold=testfold, outfile_path=results_path+'training_history_plots/Test fold '+str(testfold)+'.jpg')
 
 
@@ -239,9 +240,10 @@ if __name__ == '__main__':
     val_predictions_df = get_predictions_df(work_dir_path, dataset_dir_path, best_epochs_dict, num_folds=num_folds, phase='val')
     test_predictions_df = get_predictions_df(work_dir_path, dataset_dir_path, best_epochs_dict, num_folds=num_folds, phase='test')
     best_epochs_df = get_best_epochs_df(training_history_df, best_epochs_dict)
+    val_results_df_hospital = get_results_df_hospital(val_predictions_df)
     test_results_df_hospital = get_results_df_hospital(test_predictions_df)
     test_results_df_nWrongPatients = get_results_df_nWrongPatients(test_predictions_df)
     
     save_results_to_file(results_path, training_history_df, val_predictions_df, test_predictions_df,
-                         best_epochs_dict, test_results_df_hospital, test_results_df_nWrongPatients)
+                         best_epochs_dict, val_results_df_hospital, test_results_df_hospital, test_results_df_nWrongPatients)
 
