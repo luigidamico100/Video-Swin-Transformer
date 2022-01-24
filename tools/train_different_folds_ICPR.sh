@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 
 ### To edit ###
-NUM_EPOCHS=18
+NUM_EPOCHS=25
 NUM_FOLDS=10
 NUM_FRAMES_PER_VIDEO=2
-EXPERIMENT_NAME=27
-KEEP_ONLY_BEST=0
-VIDEOS_PER_GPU_TRAIN=2
+EXPERIMENT_NAME=6.b.jpg100
+KEEP_ONLY_BEST=1
+VIDEOS_PER_GPU_TRAIN=16
 ###############
 
-DATASET_DIR_IN=/home/luigi.damico/ICPR_datasets/ICPR_rawframes_allFrames/
-WORK_DIR=/home/luigi.damico/Video-Swin-Transformer/work_dirs/experiment_${EXPERIMENT_NAME}/
+DATASET_DIR_IN=/home/luigi.damico/ICPR_datasets/ICPR_rawframes_allFrames_jpg100/
+WORK_DIR=/home/luigi.damico/work_dirs_swin/experiment_${EXPERIMENT_NAME}/
 TRAINING_DIR=${WORK_DIR}training/
 PREDICTION_DIR_OUT=${WORK_DIR}predictions/
 RESULTS_DIR_OUT=${WORK_DIR}results/
@@ -55,7 +55,6 @@ echo ---- Generating results csv
 python results_analysis/generate_results_csv.py \
 ${WORK_DIR} \
 ${DATASET_DIR_IN} \
-${NUM_EPOCHS} \
 ${NUM_FOLDS} \
 ${RESULTS_DIR_OUT} \
 ${KEEP_ONLY_BEST}
