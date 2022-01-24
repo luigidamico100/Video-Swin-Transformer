@@ -113,7 +113,7 @@ for fold_test in range(n_folds):
                 df_annotation = df_annotation.append({'frame_name':class_+'/'+video[:-4], 'n_frames':len(video_np), 'class':1 if class_=='RDS' else 0}, ignore_index=True)
                 for idx, img_np in enumerate(video_np):
                     img_out_path = video_out_path + f'img_{(idx+1):05d}.jpg'
-                    cv2.imwrite(img_out_path, img_np)
+                    cv2.imwrite(img_out_path, img_np, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
         df_annotation.to_csv(fold_out_path + 'ICPR_' + phase + '_list_rawframes.txt', index=False, sep=' ', header=False)
         df_informations.to_csv(fold_out_path + 'ICPR_' + phase + '_list_informations.csv', index=False)
     
